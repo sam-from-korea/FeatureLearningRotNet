@@ -57,7 +57,9 @@ class Algorithm():
         if (not os.path.isdir(log_dir)):
             os.makedirs(log_dir)
 
-        now_str = datetime.datetime.now().__str__().replace(' ','_')
+        #now_str = datetime.datetime.now().__str__().replace(' ','_')
+        # 시간 포맷을 파일명에 사용할 수 있는 형태로 변경합니다.
+        now_str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
         self.log_file = os.path.join(log_dir, 'LOG_INFO_'+now_str+'.txt')
         self.log_fileHandler = logging.FileHandler(self.log_file)
@@ -227,7 +229,7 @@ class Algorithm():
         eval_stats  = {}
         train_stats = {}
         self.init_record_of_best_model()
-        for self.curr_epoch in xrange(start_epoch, self.max_num_epochs):
+        for self.curr_epoch in range(start_epoch, self.max_num_epochs):
             self.logger.info('Training epoch [%3d / %3d]' % (self.curr_epoch+1, self.max_num_epochs))
             self.adjust_learning_rates(self.curr_epoch)
             train_stats = self.run_train_epoch(data_loader_train, self.curr_epoch)
@@ -267,8 +269,8 @@ class Algorithm():
 
     def evaluate(self, dloader):
         self.logger.info('Evaluating: %s' % os.path.basename(self.exp_dir))
-
-	self.dloader = dloader
+        
+        self.dloader = dloader
         self.dataset_eval = dloader.dataset
         self.logger.info('==> Dataset: %s [%d images]' % (dloader.dataset.name, len(dloader)))
         for key, network in self.networks.items():
@@ -304,7 +306,7 @@ class Algorithm():
         self.best_epoch = None
 
     def keep_record_of_best_model(self, eval_stats, current_epoch):
-	if self.keep_best_model_metric_name is not None:
+        if self.keep_best_model_metric_name is not None:
             metric_name = self.keep_best_model_metric_name
             if (metric_name not in eval_stats):
                 raise ValueError('The provided metric {0} for keeping the best model is not computed by the evaluation routine.'.format(metric_name))

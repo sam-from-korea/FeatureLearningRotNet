@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.optim
 import os
-import torchnet as tnt
+# import torchnet as tnt
 import utils
 import PIL
 import pickle

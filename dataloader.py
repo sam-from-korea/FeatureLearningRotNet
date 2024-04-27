@@ -2,13 +2,14 @@ from __future__ import print_function
 import torch
 import torch.utils.data as data
 import torchvision
-import torchnet as tnt
+#import torchnet as tnt
+from torchvision.datasets import CIFAR10, ImageNet
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 # from Places205 import Places205
 import numpy as np
 import random
-from torch.utils.data.dataloader import default_collate
+from torch.utils.data.dataloader import default_collate, DataLoader  
 from PIL import Image
 import os
 import errno
@@ -18,7 +19,7 @@ import csv
 
 from pdb import set_trace as breakpoint
 
-# Set the paths of the datasets here.
+# 데이터셋 경로 설정
 _CIFAR_DATASET_DIR = './datasets/CIFAR'
 _IMAGENET_DATASET_DIR = './datasets/IMAGENET/ILSVRC2012'
 _PLACES205_DATASET_DIR = './datasets/Places205'
@@ -32,6 +33,15 @@ def buildLabelIndex(labels):
         label2inds[label].append(idx)
 
     return label2inds
+
+def to_array(x):
+    return np.asarray(x)
+
+def to_array_with_mul(x):
+    return np.asarray(x) * 255
+
+def transpose_and_convert(x):
+    return x.transpose(1, 2, 0).astype(np.uint8)
 
 class Places205(data.Dataset):
     def __init__(self, root, split, transform=None, target_transform=None):
@@ -97,21 +107,21 @@ class GenericDataset(data.Dataset):
                 transforms_list = [
                     transforms.Scale(256),
                     transforms.CenterCrop(224),
-                    lambda x: np.asarray(x),
+                    to_array, # 람다 함수 대신 정규 함수 사용
                 ]
             else:
                 if self.random_sized_crop:
                     transforms_list = [
-                        transforms.RandomSizedCrop(224),
+                        transforms.RandomCrop(224),
                         transforms.RandomHorizontalFlip(),
-                        lambda x: np.asarray(x),
+                        to_array, # 람다 함수 대신 정규 함수 사용
                     ]
                 else:
                     transforms_list = [
                         transforms.Scale(256),
                         transforms.RandomCrop(224),
                         transforms.RandomHorizontalFlip(),
-                        lambda x: np.asarray(x),
+                        to_array, # 람다 함수 대신 정규 함수 사용
                     ]
             self.transform = transforms.Compose(transforms_list)
             split_data_dir = _IMAGENET_DATASET_DIR + '/' + self.split
@@ -122,20 +132,20 @@ class GenericDataset(data.Dataset):
             if self.split!='train':
                 transforms_list = [
                     transforms.CenterCrop(224),
-                    lambda x: np.asarray(x),
+                    to_array, # 람다 함수 대신 정규 함수 사용
                 ]
             else:
                 if self.random_sized_crop:
                     transforms_list = [
                         transforms.RandomSizedCrop(224),
                         transforms.RandomHorizontalFlip(),
-                        lambda x: np.asarray(x),
+                        to_array, # 람다 함수 대신 정규 함수 사용
                     ]
                 else:
                     transforms_list = [
                         transforms.RandomCrop(224),
                         transforms.RandomHorizontalFlip(),
-                        lambda x: np.asarray(x),
+                        to_array, # 람다 함수 대신 정규 함수 사용
                     ]
             self.transform = transforms.Compose(transforms_list)
             self.data = Places205(root=_PLACES205_DATASET_DIR, split=self.split,
@@ -151,7 +161,7 @@ class GenericDataset(data.Dataset):
             if (split != 'test'):
                 transform.append(transforms.RandomCrop(32, padding=4))
                 transform.append(transforms.RandomHorizontalFlip())
-            transform.append(lambda x: np.asarray(x))
+            transform.append(to_array) # 람다 함수 대신 정규 함수 사용
             self.transform = transforms.Compose(transform)
             self.data = datasets.__dict__[self.dataset_name.upper()](
                 _CIFAR_DATASET_DIR, train=self.split=='train',
@@ -162,20 +172,26 @@ class GenericDataset(data.Dataset):
         if num_imgs_per_cat is not None:
             self._keep_first_k_examples_per_category(num_imgs_per_cat)
         
-    
+
     def _keep_first_k_examples_per_category(self, num_imgs_per_cat):
         print('num_imgs_per_category {0}'.format(num_imgs_per_cat))
    
         if self.dataset_name=='cifar10':
-            labels = self.data.test_labels if (self.split=='test') else self.data.train_labels
-            data = self.data.test_data if (self.split=='test') else self.data.train_data
+            # labels = self.data.test_labels if (self.split=='test') else self.data.train_labels
+            # data = self.data.test_data if (self.split=='test') else self.data.train_data
+            labels = self.data.targets
             label2ind = buildLabelIndex(labels)
             all_indices = []
             for cat in label2ind.keys():
                 label2ind[cat] = label2ind[cat][:num_imgs_per_cat]
                 all_indices += label2ind[cat]
             all_indices = sorted(all_indices)
-            data = data[all_indices]
+            # data = data[all_indices]
+            if hasattr(self.data, 'data'):
+                self.data.data = self.data.data[all_indices]
+            else:
+                raise ValueError("Dataset does not have a 'data' attribute")
+            self.data.targets = [self.data.targets[idx] for idx in all_indices]
             labels = [labels[idx] for idx in all_indices]
             if self.split=='test':
                 self.data.test_labels = labels
@@ -225,8 +241,8 @@ def rotate_img(img, rot):
     else:
         raise ValueError('rotation should be 0, 90, 180, or 270 degrees')
 
-
-class DataLoader(object):
+# torchnet을 사용하는 대신 PyTorch의 DataLoader를 사용
+class DataLoaderWrapper(object):
     def __init__(self,
                  dataset,
                  batch_size=1,
@@ -249,8 +265,8 @@ class DataLoader(object):
         ])
         self.inv_transform = transforms.Compose([
             Denormalize(mean_pix, std_pix),
-            lambda x: x.numpy() * 255.0,
-            lambda x: x.transpose(1,2,0).astype(np.uint8),
+            to_array_with_mul, # 람다 함수 대신 정규 함수 사용
+            transpose_and_convert, # 람다 함수 대신 정규 함수 사용
         ])
 
     def get_iterator(self, epoch=0):
@@ -289,12 +305,20 @@ class DataLoader(object):
                 return img, categorical_label
             _collate_fun = default_collate
 
-        tnt_dataset = tnt.dataset.ListDataset(elem_list=range(self.epoch_size),
+        # torchnet 대신 PyTorch의 DataLoader 사용
+        return DataLoader(
+            self.dataset,
+            batch_size=self.batch_size,
+            shuffle=self.shuffle,
+            num_workers=self.num_workers,
+            collate_fn=_collate_fun
+        )
+        """tnt_dataset = tnt.dataset.ListDataset(elem_list=range(self.epoch_size),
             load=_load_function)
         data_loader = tnt_dataset.parallel(batch_size=self.batch_size,
             collate_fn=_collate_fun, num_workers=self.num_workers,
             shuffle=self.shuffle)
-        return data_loader
+        return data_loader"""
 
     def __call__(self, epoch=0):
         return self.get_iterator(epoch)
